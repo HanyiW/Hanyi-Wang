@@ -1,0 +1,612 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "876e71ae",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "! pip install aimodelshare --upgrade"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "4ba60307",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Connect to google drive\n",
+    "import os\n",
+    "from google.colab import drive\n",
+    "drive.mount('/content/drive')\n",
+    "\n",
+    "# content in your drive is now available via \"/content/drive/My Drive\""
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "7f2772d3",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "!unzip /content/drive/MyDrive/Colab\\ Notebooks/COVID-19_Radiography_Dataset.zip"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "7ff5f73c",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Reduce number of images to first 1345 for each category\n",
+    "fnames[0]=fnames[0][0:1344]\n",
+    "fnames[1]=fnames[1][0:1344]\n",
+    "fnames[2]=fnames[2][0:1344]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "8eeae0a6",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Import image, load to array of shape height, width, channels, then min/max transform.\n",
+    "# Write preprocessor that will match up with model's expected input shape.\n",
+    "from keras.preprocessing import image\n",
+    "import numpy as np\n",
+    "from PIL import Image\n",
+    "\n",
+    "def preprocessor(img_path):\n",
+    "        img = Image.open(img_path).convert(\"RGB\").resize((192,192)) # import image, make sure it's RGB and resize to height and width you want.\n",
+    "        img = (np.float32(img)-1.)/(255-1.) # min max transformation\n",
+    "        img=img.reshape((192,192,3)) # Create final shape as array with correct dimensions for Keras\n",
+    "        return img\n",
+    "\n",
+    "\n",
+    "\n",
+    "#Try on single flower file (imports file and preprocesses it to data with following shape)\n",
+    "preprocessor('COVID-19_Radiography_Dataset/COVID/images/COVID-2273.png').shape\n",
+    "     "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "bf999469",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Import image files iteratively and preprocess them into array of correctly structured data\n",
+    "\n",
+    "# Create list of file paths\n",
+    "image_filepaths=fnames[0]+fnames[1]+fnames[2]\n",
+    "\n",
+    "# Iteratively import and preprocess data using map function\n",
+    "\n",
+    "# map functions apply your preprocessor function one step at a time to each filepath\n",
+    "preprocessed_image_data=list(map(preprocessor,image_filepaths ))\n",
+    "\n",
+    "# Object needs to be an array rather than a list for Keras (map returns to list object)\n",
+    "X= np.array(preprocessed_image_data) # Assigning to X to highlight that this represents feature input data for our model"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "455f2702",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "len(image_filepaths)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "80b955fd",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "print(len(X) ) #same number of elements as filenames\n",
+    "print(X.shape ) #dimensions now 192,192,3 for all images\n",
+    "print(X.min().round() ) #min value of every image is zero\n",
+    "print(X.max() ) #max value of every image is one"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "2c1f1b64",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Create y data made up of correctly ordered labels from file folders\n",
+    "from itertools import repeat\n",
+    "\n",
+    "# Recall that we have five folders with the following number of images in each folder \n",
+    "#...corresponding to each flower type\n",
+    "\n",
+    "print('number of images for each category:', [len(f) for f in fnames])\n",
+    "covid=list(repeat(\"COVID\", 1344))\n",
+    "normal=list(repeat(\"NORMAL\", 1344))\n",
+    "pneumonia=list(repeat(\"PNEUMONIA\", 1344))\n",
+    "\n",
+    "#combine into single list of y labels\n",
+    "y_labels = covid+normal+pneumonia\n",
+    "\n",
+    "#check length, same as X above\n",
+    "print(len(y_labels) )\n",
+    "\n",
+    "# Need to one hot encode for Keras.  Let's use Pandas\n",
+    "\n",
+    "import pandas as pd\n",
+    "y=pd.get_dummies(y_labels)\n",
+    "\n",
+    "display(y)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "82fa64bb",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import matplotlib.pyplot as plt\n",
+    "from mpl_toolkits.axes_grid1 import ImageGrid\n",
+    "import numpy as np\n",
+    "import random\n",
+    "\n",
+    "im1 =preprocessor(fnames[0][0])\n",
+    "im2 =preprocessor(fnames[0][1])\n",
+    "im3 =preprocessor(fnames[1][1])\n",
+    "im4 =preprocessor(fnames[1][1])\n",
+    "\n",
+    "fig = plt.figure(figsize=(4., 4.))\n",
+    "grid = ImageGrid(fig, 111,  # similar to subplot(111)\n",
+    "                 nrows_ncols=(2, 2),  # creates 2x2 grid of axes\n",
+    "                 axes_pad=0.25,  # pad between axes in inch.\n",
+    "                 )\n",
+    "\n",
+    "for ax, im in zip(grid, [im1, im2, im3, im4]):\n",
+    "    # Iterating over the grid returns the Axes.\n",
+    "    ax.imshow(im)\n",
+    "plt.show()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "bab64613",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# ======Train test split resized images (Hackathon Note!! Use same train test split to be able to submit predictions to leaderboard!)=======================================\n",
+    "from sklearn.model_selection import train_test_split\n",
+    "\n",
+    "X_train, X_test, y_train, y_test = train_test_split(X, y, stratify = y, test_size = 0.32, random_state = 1987)\n",
+    "\n",
+    "\n",
+    "X_test.shape, y_test.shape"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "297cca0f",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Clear objects from memory\n",
+    "del(X)\n",
+    "del(y)\n",
+    "del(preprocessed_image_data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "1e71ddf5",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Save data to be able to reload quickly if memory crashes or if you run Runtime>Restart Runtime\n",
+    "import pickle\n",
+    "\n",
+    "# Open a file and use dump()\n",
+    "with open('X_train.pkl', 'wb') as file:\n",
+    "    # A new file will be created\n",
+    "    pickle.dump(X_train, file)\n",
+    "\n",
+    "#Save data\n",
+    "import pickle\n",
+    "\n",
+    "# Open a file and use dump()\n",
+    "with open('X_test.pkl', 'wb') as file:\n",
+    "    # A new file will be created\n",
+    "    pickle.dump(X_test, file)\n",
+    "\n",
+    "#Save data\n",
+    "import pickle\n",
+    "\n",
+    "# Open a file and use dump()\n",
+    "with open('y_train.pkl', 'wb') as file:\n",
+    "    # A new file will be created\n",
+    "    pickle.dump(y_train, file)\n",
+    "\n",
+    "\n",
+    "# Open a file and use dump()\n",
+    "with open('y_test.pkl', 'wb') as file:\n",
+    "    # A new file will be created\n",
+    "    pickle.dump(y_test, file)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "8bda10dd",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#If you run out of Colab memory restart runtime, reload data and try again\n",
+    "import pickle\n",
+    "  \n",
+    "# Open the file in binary mode\n",
+    "with open('X_train.pkl', 'rb') as file:\n",
+    "    # Call load method to deserialze\n",
+    "    X_train = pickle.load(file)\n",
+    "\n",
+    "# Open the file in binary mode\n",
+    "with open('y_train.pkl', 'rb') as file:\n",
+    "    # Call load method to deserialze\n",
+    "    y_train = pickle.load(file)"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "0b42a989",
+   "metadata": {},
+   "source": [
+    "MODEL 1"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "f13e6d48",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "import tensorflow as tf\n",
+    "\n",
+    "with tf.device('/device:GPU:0'): #\"/GPU:0\": Short-hand notation for the first GPU of your machine that is visible to TensorFlow.\n",
+    "\n",
+    "  model = tf.keras.Sequential([\n",
+    "    # input: images of size Sample size, height, width, channels 1x192x192x3 pixels (the three stands for RGB channels)    \n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=32, padding='same', activation='relu', input_shape=(192, 192, 3)),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=64, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=64, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=128, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=128, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Flatten(),\n",
+    "    # classifying into 3 categories\n",
+    "    tf.keras.layers.Dense(3, activation='softmax')\n",
+    "  ])\n",
+    "  #from tensorflow.python.keras.callbacks import ReduceLROnPlateau\n",
+    "  #red_lr= ReduceLROnPlateau(monitor='val_acc',patience=3,verbose=1,factor=0.1) # dividing lr by 10 when val_accuracy fails to improve after 3 epochs\n",
+    "\n",
+    "  model.compile(\n",
+    "    optimizer=\"adam\", # to use callback set lr arg such as Adam(lr=0.001) instead\n",
+    "    loss= 'categorical_crossentropy',\n",
+    "    metrics=['accuracy'])\n",
+    "  \n",
+    "  # Fitting the CNN to the Training set\n",
+    "  model.fit(X_train, y_train, \n",
+    "                    epochs = 3, verbose=1,validation_split=.2) #, callbacks=[red_lr]) for callback that automatically adjusts lr"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "29ab1399",
+   "metadata": {},
+   "source": [
+    "MODEL 2"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "cb6bc7d0",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from tensorflow.keras.applications import InceptionV3\n",
+    "from tensorflow.keras.models import Sequential,Model\n",
+    "from tensorflow.keras.preprocessing import image\n",
+    "from tensorflow.keras.models import Model\n",
+    "from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Flatten\n",
+    "from tensorflow.keras import backend as K\n",
+    "\n",
+    "\n",
+    "# load model new input layer shape.\n",
+    "\n",
+    "IMG_SHAPE = (192, 192, 3)\n",
+    "\n",
+    "# Create the base model from the pre-trained model VGG16\n",
+    "base_model = InceptionV3(input_shape=IMG_SHAPE, include_top=False, weights='imagenet')\n",
+    "\n",
+    "base_model.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "537b0a13",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "base_model.trainable = False\n",
+    "\n",
+    "base_model.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "192006e4",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from tensorflow.keras.applications import VGG16\n",
+    "from tensorflow.keras.models import Sequential,Model\n",
+    "from tensorflow.keras.preprocessing import image\n",
+    "from tensorflow.keras.models import Model\n",
+    "from tensorflow.keras.layers import Dense, GlobalAveragePooling2D, Flatten\n",
+    "from tensorflow.keras import backend as K\n",
+    "\n",
+    "base_model = VGG16(input_shape=(192,192,3),\n",
+    "                                               include_top=False, \n",
+    "                                               weights='imagenet') \n",
+    "base_model.trainable = False"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "5f175df1",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Fit VGG16 model with frozen imagent weights and new input/output layer shapes (outputs have trainable parameters)\n",
+    "import tensorflow as tf\n",
+    "with tf.device('/device:GPU:0'): #\"/GPU:0\": Short-hand notation for the first GPU of your machine that is visible to TensorFlow.\n",
+    "  from tensorflow.python.keras.callbacks import ReduceLROnPlateau\n",
+    "  from tensorflow.python.keras.callbacks import ModelCheckpoint\n",
+    "  \n",
+    "  mc = ModelCheckpoint('best_model.h5', monitor='val_acc',mode='max', verbose=1, save_best_only=True) # evaluating val_acc maximization\n",
+    "  red_lr= ReduceLROnPlateau(monitor='val_acc',patience=2,verbose=1,factor=0.5, min_lr=0.001) # dividing lr by 2 when val_accuracy fails to improve after 2 epochs\n",
+    "\n",
+    "  model2.compile(loss='categorical_crossentropy', optimizer='sgd', metrics=['acc']) \n",
+    "\n",
+    "  model2.fit(X_train, y_train,batch_size=1,\n",
+    "          epochs = 1, verbose=1,validation_split=.2,callbacks=[mc,red_lr])"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "36b877db",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model.save(\"model2.h5\", save_format=\"h5\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "e766aab4",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Reload model and data\n",
+    "import tensorflow as tf\n",
+    "model = tf.keras.models.load_model('model2.h5',compile=False)\n",
+    "model.compile(\n",
+    "    optimizer=\"adam\", # to use callback set lr arg such as Adam(lr=0.001) instead\n",
+    "    loss= 'categorical_crossentropy',\n",
+    "    metrics=['accuracy'])\n",
+    "model.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "e683c2bd",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save preprocessor function (may need to reload function in cell above)\n",
+    "import aimodelshare as ai\n",
+    "ai.export_preprocessor(preprocessor,\"\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "8a31d68b",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Save tf.keras model (or any tensorflow model) to local ONNX file\n",
+    "from aimodelshare.aimsonnx import model_to_onnx\n",
+    "\n",
+    "onnx_model = model_to_onnx(model, framework='keras',\n",
+    "                          transfer_learning=True,\n",
+    "                          deep_learning=True)\n",
+    "\n",
+    "with open(\"model.onnx\", \"wb\") as f:\n",
+    "    f.write(onnx_model.SerializeToString())"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "66efd0eb",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "#Use X_test data to generate model predictions and make leaderboard submission\n",
+    "\n",
+    "#Generate and save predictions\n",
+    "\n",
+    "#Load preprocessed data\n",
+    "#If you run out of Colab memory restart runtime, reload data and try again\n",
+    "import pickle\n",
+    "  \n",
+    "# Open the file in binary mode\n",
+    "with open('X_test.pkl', 'rb') as file:\n",
+    "    # Call load method to deserialze\n",
+    "    X_test = pickle.load(file)\n",
+    "\n",
+    "# Open the file in binary mode\n",
+    "with open('y_train.pkl', 'rb') as file:\n",
+    "    # Call load method to deserialze\n",
+    "    y_train = pickle.load(file)\n",
+    "    \n",
+    "prediction_column_index=model.predict(X_test).argmax(axis=1)\n",
+    "\n",
+    "# extract correct prediction labels \n",
+    "prediction_labels = [y_train.columns[i] for i in prediction_column_index]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "18cb5195",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "# Submit Model 2 to Competition Leaderboard\n",
+    "experiment.submit_model(model_filepath = \"model.onnx\",\n",
+    "                                 preprocessor_filepath=\"preprocessor.zip\",\n",
+    "                                 prediction_submission=prediction_labels,\n",
+    "                                 custom_metadata={\"team\":\"1\"})"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "id": "acd02fcc",
+   "metadata": {},
+   "source": [
+    "MODEL 3"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "00edbc66",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "with tf.device('/device:GPU:0'): #\"/GPU:0\": Short-hand notation for the first GPU of your machine that is visible to TensorFlow.\n",
+    "  model3 = tf.keras.Sequential([\n",
+    "    # input: images of size Sample size, height, width, channels 1x192x192x3 pixels (the three stands for RGB channels)\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=32, padding='same', activation='relu', input_shape=(192, 192, 3)),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=32, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.BatchNormalization(),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=64, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=64, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.BatchNormalization(),\n",
+    "    tf.keras.layers.MaxPooling2D(pool_size=2),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=3, filters=128, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Conv2D(kernel_size=1, filters=128, padding='same', activation='relu'),\n",
+    "    tf.keras.layers.Flatten(),\n",
+    "    tf.keras.layers.Dropout(0.5),\n",
+    "    tf.keras.layers.Dense(3, activation='softmax')\n",
+    "  ])\n",
+    "  model3.compile(\n",
+    "    optimizer=\"adam\", # to use callback set lr arg such as Adam(lr=0.001) instead\n",
+    "    loss= 'categorical_crossentropy',\n",
+    "    metrics=['accuracy'])\n",
+    "  model3.fit(X_train, y_train,\n",
+    "                    epochs = 5, verbose=1,validation_split=.2) #, callbacks=[red_lr]) for callback that automatically adjusts l"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "e45ed998",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model3.save(\"model3.h5\", save_format=\"h5\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "a0bc47d3",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "model3.summary()"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "09d38696",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "data = experiment.get_leaderboard()\n",
+    "experiment.stylize_leaderboard(data)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "93d5ae97",
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.9.12"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
